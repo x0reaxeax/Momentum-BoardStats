@@ -45,7 +45,8 @@ Enable "Capture third-party overlays" in OBS Game Capture.
 
 Run `boardstats_settings.exe` or edit `boardstats.ini` manually.  
 
-`Ctrl+Alt+R` reloads saved settings in-game. Ctrl+Alt+H hides/shows the HUD.  
+`Ctrl+Alt+R` reloads saved settings in-game.  
+`Ctrl+Alt+H` hides/shows the HUD.   
 
 ## Controller command-line control
 ```
