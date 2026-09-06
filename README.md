@@ -34,8 +34,12 @@ See [Configuration](#configuration) for more info.
 - `Ctrl+Alt+Q` in-game to close BoardStats.  
 - `Ctrl+Alt+H` in-game to hide HUD/stats.  
 
+### Important Note 
+Momentum Mod currently doesn't have a client-side anti-cheat, however, I'm not responsible for any bans / leaderboard deletions regardless.  
+This program does **NOT** allow for cheating, but still tampers with game memory in order to read and capture ramp board stats/data.  
+**USE AT YOUR OWN RISK**  
 
-NOTE: The DLL and trampolines are not cleaned up after stopping, so a session can restart without unloading code still reachable by callbacks.    
+Less-important Note: The DLL and trampolines are not cleaned up after stopping, so a session can restart without unloading code still reachable by callbacks.    
 
 ## OBS Compatibility
 Enable "Capture third-party overlays" in OBS Game Capture.  
