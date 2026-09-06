@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="BoardStats/BoardStats.vcxproj" Id="75a0e104-4da3-4a38-b1bd-e7a100a090c3" />
+  <Project Path="Controller/Controller.vcxproj" Id="9af1d218-93b0-47f5-97eb-e0d1d5ce033e" />
+  <Project Path="Launcher/Launcher.vcxproj" Id="5f5f106f-b5f4-4f22-9477-cd5e92bd9c48" />
+  <Project Path="MinHook/MinHook.vcxproj" Id="6a514ccf-0458-49da-8434-75ed2184a12d" />
+  <Project Path="Settings/Settings.vcxproj" Id="74c3ee38-6b8b-4591-9711-bd025f8876a0" />
+  <Project Path="Tests/CoreTests.vcxproj" Id="df491c73-45ab-40ba-b9ed-217862c4e486" />
+  <Project Path="Tests/LifecycleTests.vcxproj" Id="fb9f8d6e-3ea4-4008-858f-f72c49fc614c" />
+  <Project Path="Tests/RendererTests.vcxproj" Id="54b7672a-6482-42fc-be20-6285a3ea7dbf" />
+</Solution>

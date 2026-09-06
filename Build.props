@@ -1,0 +1,12 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<PropertyGroup>
+<OutDir>$(MSBuildThisFileDirectory)bin\$(Platform)\$(Configuration)\</OutDir>
+<IntDir>$(MSBuildThisFileDirectory)obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+</PropertyGroup>
+<ItemDefinitionGroup><ClCompile>
+<LanguageStandard_C>stdc11</LanguageStandard_C><CompileAs>CompileAsC</CompileAs>
+<PrecompiledHeader>NotUsing</PrecompiledHeader><WarningLevel>Level4</WarningLevel>
+<TreatWarningAsError>true</TreatWarningAsError>
+<PreprocessorDefinitions>UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+<AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)BoardStats;$(MSBuildThisFileDirectory)Common;$(MSBuildThisFileDirectory)Vendor\MinHook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+</ClCompile></ItemDefinitionGroup></Project>
