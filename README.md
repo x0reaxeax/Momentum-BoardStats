@@ -10,6 +10,12 @@ In-Game HUD                |  In-Game Stats
 :-------------------------:|:-------------------------:
 ![HUD1](media/HUD1.png)    |  ![STATS2](media/STATS1.png)
 
+Modes can be easily switched via the following configuration:  
+`Compact=0` and `Compact=1` show full HUD.  
+`Compact=2` switches to centered stats text.  
+
+See [Configuration](#configuration) for more info.  
+
 ## Map
 
 - BoardStats.dll: Internal hooker (>.>) for `server.dll` + configurable in-game HUD/stats.
@@ -31,15 +37,11 @@ In-Game HUD                |  In-Game Stats
 
 NOTE: The DLL and trampolines are not cleaned up after stopping, so a session can restart without unloading code still reachable by callbacks.    
 
-## HUD / Stats mode
-`Compact=0` and `Compact=1` show full HUD.  
-`Compact=2` switches to centered stats text.  
-
 ## OBS Compatibility
 Enable "Capture third-party overlays" in OBS Game Capture.  
 
 
-## Settings / Config
+## Configuration
 
 Run `boardstats_settings.exe` or edit `boardstats.ini` manually.  
 
