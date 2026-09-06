@@ -28,7 +28,7 @@ See [Configuration](#configuration) for more info.
 ## Running
 
 1. Start Momentum Mod
-2. Extract `BoardStats.zip` and run `Launcher.exe`.  
+2. Extract [BoardStats.zip](https://github.com/x0reaxeax/Momentum-BoardStats/releases) and run `Launcher.exe`.  
 3. Re-read this to double-check it was really that ez. Yes it was, mwah.  
 
 - `Ctrl+Alt+Q` in-game to close BoardStats.  
