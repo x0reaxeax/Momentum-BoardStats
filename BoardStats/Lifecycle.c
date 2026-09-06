@@ -33,6 +33,8 @@ __declspec(dllexport) DWORD WINAPI BoardStatsStart(
 __declspec(dllexport) DWORD WINAPI BoardStatsStop(
     _In_ LPVOID lpUnused
 ) {
+    UNREFERENCED_PARAMETER(lpUnused);
+
     DWORD dwError = ERROR_BUSY;
     DWORD dwCollector = ERROR_SUCCESS;
 

@@ -25,25 +25,25 @@ static double ReadGradeNumber(
     _In_ LPCWSTR lpszPath,
     _In_ LPCWSTR lpszSection,
     _In_ LPCWSTR lpszKey,
-    _In_ double dDefault,
-    _In_ double dMin,
-    _In_ double dMax
+    _In_ DOUBLE dDefault,
+    _In_ DOUBLE dMin,
+    _In_ DOUBLE dMax
 ) {
-    WCHAR szValue[96] = { 0 };
-    WCHAR *lpszEnd = NULL;
-    double dValue = 0;
+    WCHAR wszValue[96] = { 0 };
+    WCHAR *lpEnd = NULL;
+    DOUBLE dValue = 0;
 
-    GetPrivateProfileStringW(lpszSection, lpszKey, L"", szValue, ARRAYSIZE(szValue), lpszPath);
-    dValue = wcstod(szValue, &lpszEnd);
-    if (lpszEnd == szValue) {
+    GetPrivateProfileStringW(lpszSection, lpszKey, L"", wszValue, ARRAYSIZE(wszValue), lpszPath);
+    dValue = wcstod(wszValue, &lpEnd);
+    if (lpEnd == wszValue) {
         return dDefault;
     }
 
-    while (iswspace(*lpszEnd)) {
-        ++lpszEnd;
+    while (iswspace(*lpEnd)) {
+        ++lpEnd;
     }
 
-    if (*lpszEnd != 0 || !isfinite(dValue) || dValue < dMin || dValue > dMax) {
+    if (*lpEnd != 0 || !isfinite(dValue) || dValue < dMin || dValue > dMax) {
         return dDefault;
     }
 
@@ -54,11 +54,14 @@ INT GetHudGrade(
     _In_ CONST HUD_BOARD *lpBoard,
     _In_ CONST HUD_OPTIONS *lpOptions
 ) {
-    double dScale = 1.0;
-    double dLoss = 100.0 - lpBoard->dRetention;
+    DOUBLE dScale = 1.0;
+    DOUBLE dLoss = 100.0 - lpBoard->dRetention;
 
-    if (!isfinite(dLoss) || !isfinite(lpBoard->dIncoming) || lpBoard->dIncoming <= 0 ||
-        !isfinite(lpBoard->dAngle) || lpBoard->dAngle < 0 || lpBoard->dAngle > 90) {
+    if (
+        !isfinite(dLoss) || !isfinite(lpBoard->dIncoming) || 
+        lpBoard->dIncoming <= 0 || !isfinite(lpBoard->dAngle) || 
+        lpBoard->dAngle < 0 || lpBoard->dAngle > 90
+    ) {
         return 4;
     }
 
@@ -101,26 +104,55 @@ VOID LoadHudOptions(
     lpOptions->bGradeScale = ReadOption(lpszPath, L"GradeSpeedScale", 1, 0, 1);
     lpOptions->dGradeSpeed = ReadGradeNumber(lpszPath, L"HUD", L"GradeReferenceSpeed", 1500, 1, 1000000);
     {
-        CONST LPCWSTR
-            alSections[5] = {L"Grade.Perfect", L"Grade.Good", L"Grade.Okay", L"Grade.Bad", L"Grade.Terrible"};
-        CONST double adLoss[5] = {0.5, 1.5, 3.0, 5.0, 100.0};
-        CONST double adAngle[5] = {85, 80, 75, 60, 0};
+        CONST LPCWSTR alSections[5] = {
+            L"Grade.Perfect", 
+            L"Grade.Good", 
+            L"Grade.Okay", 
+            L"Grade.Bad", 
+            L"Grade.Terrible"
+        };
 
-        CONST COLORREF aColors[5] =
-            {RGB(80, 160, 255), RGB(100, 230, 130), RGB(255, 255, 255), RGB(255, 220, 80), RGB(255, 90, 90)};
+        CONST DOUBLE adLoss[5] = { 0.5, 1.5, 3.0, 5.0, 100.0 };
+        CONST DOUBLE adAngle[5] = { 85, 80, 75, 60, 0 };
+
+        CONST COLORREF aColors[5] = {
+            RGB(80, 160, 255), 
+            RGB(100, 230, 130), 
+            RGB(255, 255, 255), 
+            RGB(255, 220, 80), 
+            RGB(255, 90, 90)
+        };
+
         for (INT i = 0; i < 5; ++i) {
             WCHAR szColor[96] = { 0 };
             WCHAR wExtra = 0;
             INT iRed = 0, iGreen = 0, iBlue = 0;
 
-            lpOptions->aGrades[i].dLoss =
-                ReadGradeNumber(lpszPath, alSections[i], L"MaxLossPercent", adLoss[i], 0, 100);
-            lpOptions->aGrades[i].dAngle =
-                ReadGradeNumber(lpszPath, alSections[i], L"MinAngle", adAngle[i], 0, 90);
+            lpOptions->aGrades[i].dLoss = ReadGradeNumber(
+                lpszPath, 
+                alSections[i], 
+                L"MaxLossPercent", 
+                adLoss[i], 
+                0, 
+                100
+            );
+
+            lpOptions->aGrades[i].dAngle = ReadGradeNumber(
+                lpszPath, 
+                alSections[i], 
+                L"MinAngle", 
+                adAngle[i], 
+                0, 
+                90
+            );
+            
             lpOptions->aGrades[i].color = aColors[i];
             GetPrivateProfileStringW(alSections[i], L"Color", L"", szColor, ARRAYSIZE(szColor), lpszPath);
-            if (3 == swscanf_s(szColor, L"%d,%d,%d %lc", &iRed, &iGreen, &iBlue, &wExtra, 1U) && iRed >= 0 &&
-                iRed <= 255 && iGreen >= 0 && iGreen <= 255 && iBlue >= 0 && iBlue <= 255) {
+
+            if (
+                3 == swscanf_s(szColor, L"%d,%d,%d %lc", &iRed, &iGreen, &iBlue, &wExtra, 1U) && 
+                iRed >= 0 && iRed <= 255 && iGreen >= 0 && iGreen <= 255 && iBlue >= 0 && iBlue <= 255\
+            ) {
                 lpOptions->aGrades[i].color = RGB(iRed, iGreen, iBlue);
             }
         }
@@ -220,6 +252,7 @@ VOID DestroyHudPanel(
     if (lpPanel->hDc != NULL) {
         DeleteDC(lpPanel->hDc);
     }
+
     DeleteObject(lpPanel->hSmall);
     DeleteObject(lpPanel->hValue);
     DeleteObject(lpPanel->hBig);
@@ -305,8 +338,13 @@ VOID PaintHudPanel(
     LPCWSTR lpszStatus =
         lpState->bStopped
             ? L"STOPPED"
-            : (lpState->qwHeartbeat != 0 && GetTickCount64() - lpState->qwHeartbeat < 3000 ? L"LIVE"
-                                                                                           : L"WAITING");
+            : (
+                lpState->qwHeartbeat != 0 && 
+                GetTickCount64() - lpState->qwHeartbeat < 3000 
+                ? L"LIVE"
+                : L"WAITING"
+            );
+
     if (2 == lpOptions->iCompact) {
         PaintMinimal(lpPanel, lpState, lpOptions);
 
@@ -410,8 +448,11 @@ VOID PaintHudPanel(
         colorMuted,
         iY + 4,
         24,
-        lpState->dDropped != 0 || lpState->dInvalid != 0 || lpState->dUnmatched != 0 ? L"Telemetry gaps detected" : L"Ctrl+Alt+H hide  /  Ctrl+Alt+R reload settings"
+        lpState->dDropped != 0 || lpState->dInvalid != 0 || lpState->dUnmatched != 0 
+            ? L"Telemetry gaps detected" 
+            : L"Ctrl+Alt+H hide  /  Ctrl+Alt+R reload settings"
     );
+
     lpPanel->iHeight = min(PANEL_HEIGHT, iY + 38);
     GdiFlush();
     for (INT i = 0; i < PANEL_WIDTH * PANEL_HEIGHT; ++i) {
