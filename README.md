@@ -99,3 +99,48 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## Optional noclip paint fix
+
+Momentum Mod's paint emitter doesn't work in mid-run noclip mode by default. Well not anymore, beach.  
+
+Enable **Paint in noclip (free-flight mid-run)** in boardstats_settings.exe, save, then press Ctrl+Alt+R in-game. The INI setting is `[HUD] PaintInNoclip=1` (default is 0. Use your existing +paint binding. Disable the setting and reload to restore normal behavior. Stopping the HUD also disables the exception. Hiding the HUD does not disable it.  
+
+The paint ray is redirected only for the verified paint caller (`type 5`) when the local player has `m_bInFreeCam` set. The active `m_hViewEntity` handle must resolve to a `C_MomentumFreeCamera` with the matching serial. Its origin and current camera angles are passed as temporary copies to the paint emitter. Observer mode and player movement fields are never changed. The client DLL hash and hook/caller bytes are checked before slapping in the hook. An unsupported build returns an error instead of enabling the feature.  
+Hook trampolines remain resident until game exit.  
+
+
+## Optional live yaw display
+
+Enable **Show yaw speed** in `boardstats_settings.exe`, save, then press **Ctrl+Alt+R** in-game.  
+Use **Edit INI** for its independent appearance settings under `[HUD]`:
+
+```ini
+ShowYawSpeed=1
+YawCorner=bottom-left
+YawX=-1
+YawY=-1
+YawMargin=16
+YawFontSize=16
+YawColor=230,230,230
+```
+
+`YawCorner` accepts `top-left`, `top-right`, `bottom-left`, or `bottom-right`.
+`YawX`/`YawY` use -1 for automatic placement; 0..16384 override the label panel's
+top-left coordinates relative to the game frame. The transparent panel is 400 pixels
+wide, with text aligned to the selected corner's side. `YawMargin` is 0..1000 pixels;
+`YawFontSize` is 8..48 pixels; `YawColor` is an RGB triplet with components 0..255.
+The label ignores board layout, scale, history, and expiry, and updates five times per
+second. **Ctrl+Alt+H** hides both layers. Stop disables rendering. Idk mate I'm just tapping TAB and copilot keeps spitting this, but it looks so professional omg, we keeping it.  
+
+### Yaw offsets
+
+For `client.dll` SHA-256 `abb9b0c3686d5ac7e3b355d5e7209b9a3a55ba7d4d7772665e17a32605c7c6f3`:
+
+| Item | RVA / offset | Evidence |
+|---|---|---|
+| `cl_yawspeed` ConVar | client + `0x111DD68` | Registration at `0x3F5F30`, name `cl_yawspeed`, default 210 |
+| ConVar vtable | client + `0xC89208` | Constructor at `0x6D9DD0` |
+| Parent | ConVar + `0x38` | Inline getter in input yaw function `0x3F27A0` |
+| Encoded float | ConVar + `0x54` | Same getter XORs the DWORD with the low 32 bits of the ConVar address |

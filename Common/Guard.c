@@ -34,7 +34,8 @@ DWORD HashFile(
         return GetLastError();
     }
 
-    LPBYTE abBuffer = HeapAlloc(hProcessHeap, HEAP_ZERO_MEMORY, 65536U);
+    SIZE_T cbBufSiz = 65536U;
+    LPBYTE abBuffer = HeapAlloc(hProcessHeap, HEAP_ZERO_MEMORY, cbBufSiz);
     if (NULL == abBuffer) {
         return ERROR_OUTOFMEMORY;
     }
@@ -73,7 +74,7 @@ DWORD HashFile(
     }
 
     while (1) {
-        if (!ReadFile(hFile, abBuffer, sizeof(abBuffer), &cbRead, NULL)) {
+        if (!ReadFile(hFile, abBuffer, cbBufSiz, &cbRead, NULL)) {
             dwError = GetLastError();
             goto _FINAL;
         }

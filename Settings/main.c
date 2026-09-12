@@ -30,7 +30,9 @@ static CONST LPCWSTR g_alFlags[] = {
     L"ShowAngle",
     L"ShowSpeeds",
     L"ShowHorizontal",
-    L"GradeColors"
+    L"GradeColors",
+    L"PaintInNoclip",
+    L"ShowYawSpeed"
 };
 static CONST LPCWSTR g_alFlagLabels[] = {
     L"Show percentage lost",
@@ -39,7 +41,9 @@ static CONST LPCWSTR g_alFlagLabels[] = {
     L"Approach angle",
     L"Incoming / outgoing speed",
     L"Horizontal speed change",
-    L"Grade colors (edit INI thresholds)"
+    L"Grade colors (edit INI thresholds)",
+    L"Paint in noclip (free-flight mid-run)",
+    L"Show yaw speed (position in INI)"
 };
 static CONST LPCWSTR g_alCorners[] = {L"top-right", L"top-left", L"bottom-right", L"bottom-left"};
 
@@ -108,7 +112,7 @@ static BOOL SaveOptions(
         bSuccess = WritePrivateProfileStringW(L"HUD", g_alKeys[i], aszValues[i], g_szPath) && bSuccess;
     }
 
-    for (INT i = 0; i < 7; ++i) {
+    for (INT i = 0; i < (INT) ARRAYSIZE(g_alFlags); ++i) {
         bSuccess = WritePrivateProfileStringW(
             L"HUD",
             g_alFlags[i],
@@ -137,7 +141,7 @@ static LRESULT CALLBACK SettingsProc(
         case WM_CREATE: {
             HUD_OPTIONS options = { 0 };
             INT aiValues[8] = { 0 };
-            BOOL abFlags[7] = { 0 };
+            BOOL abFlags[9] = { 0 };
 
             LoadHudOptions(g_szPath, &options);
             aiValues[0] = options.iX;
@@ -155,6 +159,8 @@ static LRESULT CALLBACK SettingsProc(
             abFlags[4] = options.bSpeeds;
             abFlags[5] = options.bHorizontal;
             abFlags[6] = options.bGradeColors;
+            abFlags[7] = options.bPaintInNoclip;
+            abFlags[8] = options.bShowYawSpeed;
             AddControl(hWindow, L"STATIC", L"Internal HUD settings", 0, 24, 20, 400, 24, 0);
             AddControl(
                 hWindow,
@@ -205,14 +211,14 @@ static LRESULT CALLBACK SettingsProc(
                 SetDlgItemInt(hWindow, 20 + i, aiValues[i], TRUE);
             }
 
-            for (INT i = 0; i < 7; ++i) {
+            for (INT i = 0; i < (INT) ARRAYSIZE(g_alFlags); ++i) {
                 AddControl(
                     hWindow,
                     L"BUTTON",
                     g_alFlagLabels[i],
                     BS_AUTOCHECKBOX | WS_TABSTOP,
                     450,
-                    90 + 36 * i,
+                    90 + 34 * i,
                     220,
                     28,
                     40 + i

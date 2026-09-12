@@ -13,6 +13,8 @@
 #include "Components.h"
 #include "Presentation.h"
 #include "MinHook.h"
+#include "Paint.h"
+#include "YawSpeed.h"
 
 #define DROP_COM(p) \
     do { \
@@ -50,6 +52,9 @@ typedef struct _HUD_CONTEXT {
     HUD_STATE State;
     HUD_OPTIONS Options;
     HUD_PANEL Panel;
+    HUD_PANEL YawPanel;
+    ULONGLONG qwYawSampled;
+    DWORD dwYawThread;
     WCHAR szConfig[32768];
     ULONGLONG qwSampled;
     ULONGLONG qwBoardTime;
@@ -65,8 +70,8 @@ typedef struct _GRAPHICS_CONTEXT {
     ID3DDeviceContextState *lpHudContext;
     ID3D11VertexShader *lpVs;
     ID3D11PixelShader *lpPs;
-    ID3D11Texture2D *lpTexture;
-    ID3D11ShaderResourceView *lpView;
+    ID3D11Texture2D *alpTextures[2];
+    ID3D11ShaderResourceView *alpViews[2];
     ID3D11SamplerState *lpSampler;
     ID3D11RasterizerState *lpRaster;
     ID3D11BlendState *lpBlend;
@@ -84,8 +89,10 @@ static VOID ReleaseGraphics(
     DROP_COM(g_Graphics.lpRaster);
     DROP_COM(g_Graphics.lpBlend);
     DROP_COM(g_Graphics.lpSampler);
-    DROP_COM(g_Graphics.lpView);
-    DROP_COM(g_Graphics.lpTexture);
+    DROP_COM(g_Graphics.alpViews[1]);
+    DROP_COM(g_Graphics.alpTextures[1]);
+    DROP_COM(g_Graphics.alpViews[0]);
+    DROP_COM(g_Graphics.alpTextures[0]);
     DROP_COM(g_Graphics.lpVs);
     DROP_COM(g_Graphics.lpPs);
     DROP_COM(g_Graphics.lpContext);
@@ -192,26 +199,29 @@ static HRESULT CreateGraphics(
         goto _FINAL;
     }
     
-    hr = ID3D11Device_CreateTexture2D(
-        lpDevice, 
-        &textureDesc, 
-        NULL, 
-        &g_Graphics.lpTexture
-    );
+    for (UINT i = 0; i < 2U; ++i) {
+        hr = ID3D11Device_CreateTexture2D(
+            lpDevice,
+            &textureDesc,
+            NULL,
+            &g_Graphics.alpTextures[i]
+        );
 
-    if (FAILED(hr)) {
-        goto _FINAL;
-    }
+        if (FAILED(hr)) {
+            goto _FINAL;
+        }
 
-    hr = ID3D11Device_CreateShaderResourceView(
-        lpDevice, 
-        (ID3D11Resource *) g_Graphics.lpTexture, 
-        NULL, 
-        &g_Graphics.lpView
-    );
+        hr = ID3D11Device_CreateShaderResourceView(
+            lpDevice,
+            (ID3D11Resource *) g_Graphics.alpTextures[i],
+            NULL,
+            &g_Graphics.alpViews[i]
+        );
 
-    if (FAILED(hr)) {
-        goto _FINAL;
+        if (FAILED(hr)) {
+            goto _FINAL;
+        }
+
     }
 
     samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -244,6 +254,7 @@ static HRESULT CreateGraphics(
         g_Graphics.lpDevice = lpDevice;
         ID3D11Device_AddRef(lpDevice);
         g_Hud.qwSampled = 0;
+        g_Hud.qwYawSampled = 0;
     }
 
 _FINAL:
@@ -255,9 +266,15 @@ _FINAL:
     return hr;
 }
 
-static HRESULT DrawFrame(
-    _In_ IDXGISwapChain *lpSwapChain
+static HRESULT DrawLayer(
+    _In_ IDXGISwapChain *lpSwapChain,
+    _In_ BOOL bYaw
 ) {
+    LPHUD_PANEL lpPanel = bYaw ? &g_Hud.YawPanel : &g_Hud.Panel;
+    ULONGLONG *lpSampled = bYaw ? &g_Hud.qwYawSampled : &g_Hud.qwSampled;
+    DWORD *lpThread = bYaw ? &g_Hud.dwYawThread : &g_Hud.dwPanelThread;
+    UINT uLayer = bYaw ? 1U : 0U;
+    HUD_OPTIONS hudPlacementOpts = g_Hud.Options;
     ID3D11Device *lpDevice = NULL;
     ID3D11Texture2D *lpBackbuffer = NULL;
     ID3D11RenderTargetView *lpTarget = NULL;
@@ -301,35 +318,42 @@ static HRESULT DrawFrame(
         }
     }
 
-    if (NULL == g_Hud.Panel.hDc || g_Hud.dwPanelThread != GetCurrentThreadId()) {
-        DestroyHudPanel(&g_Hud.Panel);
-        if (!CreateHudPanel(&g_Hud.Panel)) {
+    if (NULL == lpPanel->hDc || *lpThread != GetCurrentThreadId()) {
+        DestroyHudPanel(lpPanel);
+        if (!CreateHudPanel(lpPanel)) {
             hr = E_OUTOFMEMORY;
             goto _FINAL;
         }
 
-        g_Hud.dwPanelThread = GetCurrentThreadId();
-        g_Hud.qwSampled = 0;
+        *lpThread = GetCurrentThreadId();
+        *lpSampled = 0;
     }
 
-    if (0 == g_Hud.qwSampled || qwNow - g_Hud.qwSampled >= 100) {
-        HUD_STATE hudState = { 0 };
-        if (g_Hook.lpSnapshot(&hudState) && hudState.dwExpectedPid == GetCurrentProcessId()) {
-            g_Hud.State = hudState;
-            if (0 == hudState.dwHistoryCount) {
-                g_Hud.qwSequence = 0;
-                g_Hud.qwBoardTime = 0;
-            } else if (hudState.aHistory[0].qwSequence != g_Hud.qwSequence) {
-                g_Hud.qwSequence = hudState.aHistory[0].qwSequence;
-                g_Hud.qwBoardTime = qwNow;
+    if (0 == *lpSampled || qwNow - *lpSampled >= (bYaw ? 200U : 100U)) {
+        if (bYaw) {
+            FLOAT fYaw = 0;
+            BOOL bAvailable = ReadYawSpeed(&fYaw);
+
+            PaintYawPanel(lpPanel, &g_Hud.Options, bAvailable, fYaw);
+        } else {
+            HUD_STATE hudState = { 0 };
+            if (g_Hook.lpSnapshot(&hudState) && hudState.dwExpectedPid == GetCurrentProcessId()) {
+                g_Hud.State = hudState;
+                if (0 == hudState.dwHistoryCount) {
+                    g_Hud.qwSequence = 0;
+                    g_Hud.qwBoardTime = 0;
+                } else if (hudState.aHistory[0].qwSequence != g_Hud.qwSequence) {
+                    g_Hud.qwSequence = hudState.aHistory[0].qwSequence;
+                    g_Hud.qwBoardTime = qwNow;
+                }
             }
+
+            PaintHudPanel(lpPanel, &g_Hud.State, &g_Hud.Options);
         }
-        
-        PaintHudPanel(&g_Hud.Panel, &g_Hud.State, &g_Hud.Options);
         
         hr = ID3D11DeviceContext1_Map(
             g_Graphics.lpContext, 
-            (ID3D11Resource *) g_Graphics.lpTexture, 
+            (ID3D11Resource *) g_Graphics.alpTextures[uLayer],
             0, 
             D3D11_MAP_WRITE_DISCARD, 
             0, 
@@ -343,7 +367,7 @@ static HRESULT DrawFrame(
         if (NULL == mapSubres.pData || 0 == mapSubres.RowPitch) {
             ID3D11DeviceContext1_Unmap(
                 g_Graphics.lpContext, 
-                (ID3D11Resource *) g_Graphics.lpTexture, 
+                (ID3D11Resource *) g_Graphics.alpTextures[uLayer],
                 0
             );
 
@@ -354,17 +378,17 @@ static HRESULT DrawFrame(
         for (UINT i = 0; i < PANEL_HEIGHT; ++i) {
             memcpy(
                 (BYTE *) mapSubres.pData + i * mapSubres.RowPitch, 
-                g_Hud.Panel.lpPixels + i * PANEL_WIDTH, 
+                lpPanel->lpPixels + i * PANEL_WIDTH,
                 PANEL_WIDTH * sizeof(DWORD)
             );
         }
 
-        ID3D11DeviceContext1_Unmap(g_Graphics.lpContext, (ID3D11Resource *) g_Graphics.lpTexture, 0);
-        g_Hud.qwSampled = qwNow;
+        ID3D11DeviceContext1_Unmap(g_Graphics.lpContext, (ID3D11Resource *) g_Graphics.alpTextures[uLayer], 0);
+        *lpSampled = qwNow;
     }
     
     if (
-        (g_Hud.Options.iDuration > 0) && 
+        !bYaw && (g_Hud.Options.iDuration > 0) &&
         0 != g_Hud.qwBoardTime && 
         (qwNow - g_Hud.qwBoardTime > (ULONGLONG) g_Hud.Options.iDuration)
      ) {
@@ -395,9 +419,18 @@ static HRESULT DrawFrame(
         goto _FINAL;
     }
 
+    if (bYaw) {
+        hudPlacementOpts.iScale = 100;
+        hudPlacementOpts.iCompact = 0;
+        hudPlacementOpts.iX = g_Hud.Options.iYawX;
+        hudPlacementOpts.iY = g_Hud.Options.iYawY;
+        hudPlacementOpts.iMargin = g_Hud.Options.iYawMargin;
+        hudPlacementOpts.bLeft = g_Hud.Options.bYawLeft;
+        hudPlacementOpts.bBottom = g_Hud.Options.bYawBottom;
+    }
     PlaceHudPanel(
-        &g_Hud.Options, 
-        g_Hud.Panel.iHeight, 
+        &hudPlacementOpts,
+        lpPanel->iHeight,
         (INT) backText.Width, 
         (INT) backText.Height, 
         &rectBounds
@@ -406,7 +439,7 @@ static HRESULT DrawFrame(
     viewport.TopLeftX = (FLOAT) rectBounds.left;
     viewport.TopLeftY = (FLOAT) rectBounds.top;
     viewport.Width = (FLOAT) (rectBounds.right - rectBounds.left);
-    viewport.Height = (FLOAT) (rectBounds.bottom - rectBounds.top) * PANEL_HEIGHT / g_Hud.Panel.iHeight;
+    viewport.Height = (FLOAT) (rectBounds.bottom - rectBounds.top) * PANEL_HEIGHT / lpPanel->iHeight;
     viewport.MaxDepth = 1;
 
     // restore the entire D3D11 context
@@ -419,7 +452,7 @@ static HRESULT DrawFrame(
     ID3D11DeviceContext1_OMSetBlendState(g_Graphics.lpContext, g_Graphics.lpBlend, NULL, 0xFFFFFFFF);
     ID3D11DeviceContext1_VSSetShader(g_Graphics.lpContext, g_Graphics.lpVs, NULL, 0);
     ID3D11DeviceContext1_PSSetShader(g_Graphics.lpContext, g_Graphics.lpPs, NULL, 0);
-    ID3D11DeviceContext1_PSSetShaderResources(g_Graphics.lpContext, 0, 1, &g_Graphics.lpView);
+    ID3D11DeviceContext1_PSSetShaderResources(g_Graphics.lpContext, 0, 1, &g_Graphics.alpViews[uLayer]);
     ID3D11DeviceContext1_PSSetSamplers(g_Graphics.lpContext, 0, 1, &g_Graphics.lpSampler);
     ID3D11DeviceContext1_Draw(g_Graphics.lpContext, 3, 0);
     ID3D11DeviceContext1_OMSetRenderTargets(g_Graphics.lpContext, 0, NULL, NULL);
@@ -431,6 +464,17 @@ _FINAL:
     DROP_COM(lpTarget);
     DROP_COM(lpBackbuffer);
     DROP_COM(lpDevice);
+    return hr;
+}
+
+static HRESULT DrawFrame(
+    _In_ IDXGISwapChain *lpSwapChain
+) {
+    HRESULT hr = DrawLayer(lpSwapChain, FALSE);
+
+    if (SUCCEEDED(hr) && g_Hud.Options.bShowYawSpeed) {
+        hr = DrawLayer(lpSwapChain, TRUE);
+    }
     return hr;
 }
 
@@ -456,11 +500,19 @@ static DWORD ReloadOptions(
     VOID
 ) {
     HUD_OPTIONS hudOptions = { 0 };
+    DWORD dwPaintError = ERROR_SUCCESS;
 
     LoadHudOptions(g_Hud.szConfig, &hudOptions);
+    dwPaintError = ConfigurePaint(hudOptions.bPaintInNoclip);
+    if (ERROR_SUCCESS != dwPaintError) {
+        InterlockedExchange(&g_Runtime.lError, HRESULT_FROM_WIN32(dwPaintError));
+        return dwPaintError;
+    }
     
     AcquireSRWLockExclusive(&g_Hud.RenderLock);
+    ConfigureYawSpeed(hudOptions.bShowYawSpeed);
     g_Hud.Options = hudOptions;
+    g_Hud.qwYawSampled = 0;
     g_Hud.qwSampled = 0;
     ReleaseSRWLockExclusive(&g_Hud.RenderLock);
     
@@ -515,6 +567,7 @@ static DWORD WINAPI HotkeyWorker(
     AcquireSRWLockExclusive(&g_Hud.RenderLock);
     ReleaseSRWLockExclusive(&g_Hud.RenderLock);
 
+    ConfigurePaint(FALSE);
     CollectorStop(NULL);
     UnregisterHotKey(NULL, 1);
     UnregisterHotKey(NULL, 2);
@@ -739,7 +792,10 @@ DWORD WINAPI InternalStart(
         goto _FINAL;
     }
 
-    ReloadOptions();
+    dwError = ReloadOptions();
+    if (ERROR_SUCCESS != dwError) {
+        goto _FINAL;
+    }
     InterlockedExchange(&g_Runtime.lHidden, 0);
     InterlockedExchange(&g_Runtime.lError, S_OK);
 
@@ -769,6 +825,9 @@ DWORD WINAPI InternalStart(
     }
 
 _FINAL:
+    if (ERROR_SUCCESS != dwError && NULL == g_Runtime.hWorker) {
+        ConfigurePaint(FALSE);
+    }
     if (NULL != wszExe) {
         HeapFree(hProcessHeap, 0, wszExe);
     }

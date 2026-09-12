@@ -1,6 +1,8 @@
 // Real DX11 render/readback and resize checks on a private offscreen test window.
 #include "../BoardStats/dllmain.c"
 #include <stdlib.h>
+#include "../BoardStats/Paint.c"
+#include "../BoardStats/YawSpeed.c"
 
 #define CHECK(x)                                                                                             \
     do {                                                                                                     \
@@ -9,6 +11,73 @@
             ExitProcess(1);                                                                                  \
         }                                                                                                    \
     } while (0)
+
+static VOID TestYawReader(
+    VOID
+) {
+    BYTE *lpBase = VirtualAlloc(NULL, 0x1120000U, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    BYTE *lpVariable = NULL;
+    FLOAT fValue = 0;
+    DWORD dwBits = 0;
+
+    CHECK(NULL != lpBase);
+    lpVariable = lpBase + CLIENT_YAWSPEED_RVA;
+    *(BYTE **) lpVariable = lpBase + CLIENT_CONVAR_VTABLE_RVA;
+    *(BYTE **) (lpVariable + CONVAR_PARENT_OFFSET) = lpVariable;
+    g_hYawClient = (HMODULE) lpBase;
+    g_bYawReady = TRUE;
+    for (INT i = 0; i < 2; ++i) {
+        FLOAT fExpected = 0 == i ? 97.0F : 210.25F;
+
+        memcpy(&dwBits, &fExpected, sizeof(dwBits));
+        *(DWORD *) (lpVariable + CONVAR_FLOAT_OFFSET) = dwBits ^ (DWORD) (ULONG_PTR) lpVariable;
+        CHECK(ReadYawSpeed(&fValue) && fExpected == fValue);
+    }
+    *(DWORD *) (lpVariable + CONVAR_FLOAT_OFFSET) = 0x7FC00000U ^ (DWORD) (ULONG_PTR) lpVariable;
+    CHECK(!ReadYawSpeed(&fValue) && 0 == fValue);
+    *(BYTE **) (lpVariable + CONVAR_PARENT_OFFSET) = NULL;
+    CHECK(!ReadYawSpeed(&fValue));
+    g_bYawReady = FALSE;
+    g_hYawClient = NULL;
+    CHECK(!ReadYawSpeed(&fValue));
+    CHECK(!ReadYawSpeed(NULL));
+    VirtualFree(lpBase, 0, MEM_RELEASE);
+}
+
+static UINT g_uPaintFixtureCalls = 0;
+static VOID __fastcall CheckPaintArguments(
+    _In_ LPVOID lpPlayer,
+    _In_ CONST BOARD_VECTOR *lpOrigin,
+    _In_ CONST BOARD_VECTOR *lpAngles,
+    _In_ UINT uType,
+    _In_ BYTE bMode,
+    _In_ INT iSeed,
+    _In_ FLOAT fSpread
+) {
+    CHECK((LPVOID) (ULONG_PTR) 0x1234U == lpPlayer);
+    CHECK(10.0F == lpOrigin->fValue[0] && 30.0F == lpOrigin->fValue[2]);
+    CHECK(40.0F == lpAngles->fValue[0] && 60.0F == lpAngles->fValue[2]);
+    CHECK(5U == uType && 7U == bMode && -123 == iSeed);
+    CHECK(0.375F == fSpread);
+    ++g_uPaintFixtureCalls;
+}
+
+static VOID TestPaintForwarding(
+    VOID
+) {
+    BOARD_VECTOR vecOrigin = { { 10.0F, 20.0F, 30.0F } };
+    BOARD_VECTOR vecAngles = { { 40.0F, 50.0F, 60.0F } };
+    EmitPaint_t lpPrevious = g_lpEmitPaint;
+
+    g_lpEmitPaint = CheckPaintArguments;
+    EmitCameraPaint((LPVOID) (ULONG_PTR) 0x1234U, &vecOrigin, &vecAngles, 5U, 7U, -123, 0.375F);
+    InterlockedExchange(&g_lPaintEnabled, 1);
+    EmitCameraPaint((LPVOID) (ULONG_PTR) 0x1234U, &vecOrigin, &vecAngles, 5U, 7U, -123, 0.375F);
+    InterlockedExchange(&g_lPaintEnabled, 0);
+    CHECK(2U == g_uPaintFixtureCalls);
+    CHECK(0 == BoardStatsPaintRedirects);
+    g_lpEmitPaint = lpPrevious;
+}
 
 static HUD_STATE g_TestSample = { 0 };
 
@@ -129,7 +198,14 @@ int wmain(
         CHECK(WritePrivateProfileStringW(L"Grade.Good", L"MinAngle", L"nan", szIni));
         CHECK(WritePrivateProfileStringW(L"Grade.Good", L"Color", L"256,0,0", szIni));
         CHECK(WritePrivateProfileStringW(L"HUD", L"GradeReferenceSpeed", L"0", szIni));
+        CHECK(WritePrivateProfileStringW(L"HUD", L"ShowYawSpeed", L"1", szIni));
+        CHECK(WritePrivateProfileStringW(L"HUD", L"YawCorner", L"top-right", szIni));
+        CHECK(WritePrivateProfileStringW(L"HUD", L"YawColor", L"12,34,56", szIni));
+        CHECK(WritePrivateProfileStringW(L"HUD", L"YawFontSize", L"100", szIni));
         LoadHudOptions(szIni, &custom);
+        CHECK(custom.bShowYawSpeed && !custom.bYawLeft && !custom.bYawBottom);
+        CHECK(RGB(12, 34, 56) == custom.colorYaw && 48 == custom.iYawFontSize);
+        CHECK(-1 == custom.iYawX && -1 == custom.iYawY && 16 == custom.iYawMargin);
         CHECK(2.25 == custom.aGrades[0].dLoss);
         CHECK(RGB(12, 34, 56) == custom.aGrades[0].color);
         CHECK(80 == custom.aGrades[1].dAngle);
@@ -275,6 +351,51 @@ int wmain(
         g_Hud.Options.iCompact = 0;
         g_Hud.qwSampled = 0;
     }
+    {
+        UINT nText = 0;
+        DWORD dwFirst = 0;
+        g_Hud.Options.bShowYawSpeed = TRUE;
+        g_Hud.Options.bYawLeft = TRUE;
+        g_Hud.Options.bYawBottom = TRUE;
+        g_Hud.Options.iYawX = -1;
+        g_Hud.Options.iYawY = -1;
+        g_Hud.Options.iYawMargin = 16;
+        g_Hud.Options.iYawFontSize = 16;
+        g_Hud.Options.colorYaw = RGB(230, 230, 230);
+        g_Hud.Options.iDuration = 1;
+        g_Hud.qwBoardTime = GetTickCount64() - 10;
+        g_Hud.qwSampled = GetTickCount64();
+        ID3D11DeviceContext_ClearRenderTargetView(lpContext, lpTarget, afClear);
+        CHECK(S_OK == DrawFrame(lpSwap));
+        ID3D11DeviceContext_RSGetViewports(lpContext, &nViewports, &after);
+        CHECK(0 == memcmp(&before, &after, sizeof(before)));
+        CHECK(0 == g_Hud.YawPanel.lpPixels[0]);
+        ID3D11DeviceContext_CopyResource(lpContext, (ID3D11Resource *) lpRead, (ID3D11Resource *) lpBack);
+        CHECK(SUCCEEDED(ID3D11DeviceContext_Map(lpContext, (ID3D11Resource *) lpRead, 0, D3D11_MAP_READ, 0, &mapped)));
+        dwFirst = *(DWORD *) mapped.pData;
+        for (INT iY = 440; iY < 464; ++iY) {
+            for (INT iX = 16; iX < 416; ++iX) {
+                DWORD dwPixel = *(DWORD *) ((BYTE *) mapped.pData + iY * mapped.RowPitch + iX * 4);
+                nText += dwPixel != dwFirst;
+            }
+        }
+        CHECK(nText > 100 && nText < 5000);
+        if (argc >= 5) {
+            SavePreview(argv[4], &mapped);
+        }
+        ID3D11DeviceContext_Unmap(lpContext, (ID3D11Resource *) lpRead, 0);
+        // The yaw layer also survives an empty compact board panel.
+        g_TestSample.dwHistoryCount = 0;
+        g_Hud.Options.iCompact = 2;
+        g_Hud.qwSampled = 0;
+        CHECK(S_OK == DrawFrame(lpSwap));
+        CHECK(0 == g_Hud.Panel.lpPixels[0]);
+        g_TestSample = sample;
+        g_Hud.Options.iCompact = 0;
+        g_Hud.Options.bShowYawSpeed = FALSE;
+        g_Hud.Options.iDuration = 0;
+        g_Hud.qwSampled = 0;
+    }
     ID3D11DeviceContext_OMSetRenderTargets(lpContext, 0, NULL, NULL);
     DROP_COM(lpTarget);
     DROP_COM(lpBack);
@@ -296,12 +417,24 @@ int wmain(
     }
     ReleaseGraphics();
     DestroyHudPanel(&g_Hud.Panel);
+    DestroyHudPanel(&g_Hud.YawPanel);
     DROP_COM(lpContext);
     DROP_COM(lpDevice);
     DROP_COM(lpSwap);
     DROP_COM(g_Graphics.lpVsCode);
     DROP_COM(g_Graphics.lpPsCode);
 
+    TestYawReader();
+    TestPaintForwarding();
+    CHECK(PaintShouldOverride(TRUE, 1, TRUE, TRUE));
+    CHECK(!PaintShouldOverride(FALSE, 1, TRUE, TRUE));
+    CHECK(!PaintShouldOverride(TRUE, 1, FALSE, TRUE));
+    CHECK(!PaintShouldOverride(TRUE, 1, TRUE, FALSE));
+    for (DWORD dwMode = 0; dwMode < 8; ++dwMode) {
+        CHECK((1 == dwMode) == PaintShouldOverride(TRUE, dwMode, TRUE, TRUE));
+    }
+    CHECK(ERROR_SUCCESS == ConfigurePaint(FALSE));
+    CHECK(ERROR_MOD_NOT_FOUND == ConfigurePaint(TRUE));
     CHECK(MH_OK == MH_Uninitialize());
     DestroyWindow(hWindow);
     UnregisterClassW(wc.lpszClassName, g_Runtime.hSelf);

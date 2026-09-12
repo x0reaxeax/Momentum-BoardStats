@@ -29,6 +29,15 @@ typedef struct _HUD_OPTIONS {
     BOOL bAngle;
     BOOL bSpeeds;
     BOOL bHorizontal;
+    BOOL bPaintInNoclip;
+    BOOL bShowYawSpeed;
+    BOOL bYawLeft;
+    BOOL bYawBottom;
+    INT iYawX;
+    INT iYawY;
+    INT iYawMargin;
+    INT iYawFontSize;
+    COLORREF colorYaw;
     BOOL bGradeColors;
     BOOL bGradeScale;
     double dGradeSpeed;
@@ -109,5 +118,19 @@ VOID PlaceHudPanel(
 INT GetHudGrade(
     _In_ CONST HUD_BOARD *lpBoard,
     _In_ CONST HUD_OPTIONS *lpOptions
+);
+/// <summary>
+/// Rasterize an independent, transparent yaw-speed label.
+/// </summary>
+/// <param name="lpPanel">Created panel.</param>
+/// <param name="lpOptions">Font, color, and alignment settings.</param>
+/// <param name="bAvailable">Whether the current game value was read.</param>
+/// <param name="fValue">Current cl_yawspeed value.</param>
+/// <returns>No value.</returns>
+VOID PaintYawPanel(
+    _Inout_ LPHUD_PANEL lpPanel,
+    _In_ CONST HUD_OPTIONS *lpOptions,
+    _In_ BOOL bAvailable,
+    _In_ FLOAT fValue
 );
 #endif

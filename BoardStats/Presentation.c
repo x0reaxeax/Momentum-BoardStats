@@ -100,6 +100,37 @@ VOID LoadHudOptions(
     lpOptions->bAngle = ReadOption(lpszPath, L"ShowAngle", 1, 0, 1);
     lpOptions->bSpeeds = ReadOption(lpszPath, L"ShowSpeeds", 1, 0, 1);
     lpOptions->bHorizontal = ReadOption(lpszPath, L"ShowHorizontal", 0, 0, 1);
+    lpOptions->bPaintInNoclip = ReadOption(lpszPath, L"PaintInNoclip", 0, 0, 1);
+    lpOptions->bShowYawSpeed = ReadOption(lpszPath, L"ShowYawSpeed", 0, 0, 1);
+    lpOptions->iYawX = ReadOption(lpszPath, L"YawX", -1, -1, 16384);
+    lpOptions->iYawY = ReadOption(lpszPath, L"YawY", -1, -1, 16384);
+    lpOptions->iYawMargin = ReadOption(lpszPath, L"YawMargin", 16, 0, 1000);
+    lpOptions->iYawFontSize = ReadOption(lpszPath, L"YawFontSize", 16, 8, 48);
+
+    GetPrivateProfileStringW(
+        L"HUD",
+        L"YawCorner",
+        L"bottom-left",
+        szCorner,
+        ARRAYSIZE(szCorner),
+        lpszPath
+    );
+
+    lpOptions->bYawLeft = NULL != wcsstr(szCorner, L"left");
+    lpOptions->bYawBottom = NULL != wcsstr(szCorner, L"bottom");
+    lpOptions->colorYaw = RGB(230, 230, 230);
+    {
+        WCHAR szColor[96] = { 0 };
+        WCHAR wExtra = 0;
+        INT iRed = 0, iGreen = 0, iBlue = 0;
+
+        GetPrivateProfileStringW(L"HUD", L"YawColor", L"", szColor, ARRAYSIZE(szColor), lpszPath);
+        if (3 == swscanf_s(szColor, L"%d,%d,%d %lc", &iRed, &iGreen, &iBlue, &wExtra, 1U) &&
+            iRed >= 0 && iRed <= 255 && iGreen >= 0 && iGreen <= 255 && iBlue >= 0 && iBlue <= 255) {
+            lpOptions->colorYaw = RGB(iRed, iGreen, iBlue);
+        }
+    }
+
     lpOptions->bGradeColors = ReadOption(lpszPath, L"GradeColors", 1, 0, 1);
     lpOptions->bGradeScale = ReadOption(lpszPath, L"GradeSpeedScale", 1, 0, 1);
     lpOptions->dGradeSpeed = ReadGradeNumber(lpszPath, L"HUD", L"GradeReferenceSpeed", 1500, 1, 1000000);
@@ -157,6 +188,7 @@ VOID LoadHudOptions(
             }
         }
     }
+
     GetPrivateProfileStringW(L"HUD", L"Corner", L"top-right", szCorner, ARRAYSIZE(szCorner), lpszPath);
     lpOptions->bLeft = NULL != wcsstr(szCorner, L"left");
     lpOptions->bBottom = NULL != wcsstr(szCorner, L"bottom");
@@ -183,52 +215,38 @@ BOOL CreateHudPanel(
     lpPanel->hOldBitmap = SelectObject(lpPanel->hDc, lpPanel->hBitmap);
     lpPanel->hSmall = CreateFontW(
         -13,
-        0,
-        0,
-        0,
+        0, 0, 0,
         FW_NORMAL,
-        0,
-        0,
-        0,
+        FALSE, FALSE, FALSE,
         DEFAULT_CHARSET,
-        0,
-        0,
+        0, 0,
         ANTIALIASED_QUALITY,
         0,
         L"Segoe UI"
     );
     lpPanel->hValue = CreateFontW(
         -24,
-        0,
-        0,
-        0,
+        0, 0, 0,
         FW_SEMIBOLD,
-        0,
-        0,
-        0,
+        FALSE, FALSE, FALSE,
         DEFAULT_CHARSET,
-        0,
-        0,
+        0, 0,
         ANTIALIASED_QUALITY,
         0,
         L"Segoe UI"
     );
     lpPanel->hBig = CreateFontW(
         -48,
-        0,
-        0,
-        0,
+        0, 0, 0,
         FW_SEMIBOLD,
-        0,
-        0,
-        0,
+        FALSE, FALSE, FALSE,
         DEFAULT_CHARSET,
-        0,
-        0,
+        0, 0,
         ANTIALIASED_QUALITY,
         0,
         L"Segoe UI"
     );
+
     if (NULL == lpPanel->hSmall || NULL == lpPanel->hValue || NULL == lpPanel->hBig) {
         DestroyHudPanel(lpPanel);
 
@@ -280,9 +298,9 @@ static VOID PaintMinimal(
     _In_ CONST HUD_STATE *lpState,
     _In_ CONST HUD_OPTIONS *lpOptions
 ) {
-    WCHAR szLine[192] = { 0 };
+    WCHAR wszLine[192] = { 0 };
 
-    COLORREF color = RGB(255, 255, 255);
+    COLORREF colorRef = RGB(255, 255, 255);
     RECT rect = {0, 0, PANEL_WIDTH, 32};
     HGDIOBJ hOld = SelectObject(lpPanel->hDc, lpPanel->hValue);
     CONST HUD_BOARD *lpBoard = &lpState->aHistory[0];
@@ -291,32 +309,32 @@ static VOID PaintMinimal(
     SetBkMode(lpPanel->hDc, TRANSPARENT);
     SetTextColor(lpPanel->hDc, RGB(255, 255, 255));
     if (lpState->dwHistoryCount != 0) {
-        swprintf_s(szLine, ARRAYSIZE(szLine), L"Speed Change: %+.2f u/s", lpBoard->dDelta);
-        DrawTextW(lpPanel->hDc, szLine, -1, &rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        swprintf_s(wszLine, ARRAYSIZE(wszLine), L"Speed Change: %+.2f u/s", lpBoard->dDelta);
+        DrawTextW(lpPanel->hDc, wszLine, -1, &rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
         rect.top = 32;
         rect.bottom = 64;
         swprintf_s(
-            szLine,
-            ARRAYSIZE(szLine),
+            wszLine,
+            ARRAYSIZE(wszLine),
             L"Speed %s: %.3f%%",
             lpOptions->bShowLoss ? L"Lost" : L"Retained",
             lpOptions->bShowLoss ? 100.0 - lpBoard->dRetention : lpBoard->dRetention
         );
-        DrawTextW(lpPanel->hDc, szLine, -1, &rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+        DrawTextW(lpPanel->hDc, wszLine, -1, &rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
     }
     SelectObject(lpPanel->hDc, hOld);
     GdiFlush();
     if (lpOptions->bGradeColors) {
-        color = lpOptions->aGrades[GetHudGrade(lpBoard, lpOptions)].color;
+        colorRef = lpOptions->aGrades[GetHudGrade(lpBoard, lpOptions)].color;
     }
     // Rasterize white coverage first, then tint without changing glyph opacity.
     for (INT i = 0; i < PANEL_WIDTH * PANEL_HEIGHT; ++i) {
         DWORD dwPixel = lpPanel->lpPixels[i];
         DWORD dwCoverage = max(dwPixel & 255, max((dwPixel >> 8) & 255, (dwPixel >> 16) & 255));
 
-        lpPanel->lpPixels[i] = (dwCoverage << 24) | ((GetRValue(color) * dwCoverage / 255) << 16) |
-                               ((GetGValue(color) * dwCoverage / 255) << 8) |
-                               (GetBValue(color) * dwCoverage / 255);
+        lpPanel->lpPixels[i] = (dwCoverage << 24) | ((GetRValue(colorRef) * dwCoverage / 255) << 16) |
+                               ((GetGValue(colorRef) * dwCoverage / 255) << 8) |
+                               (GetBValue(colorRef) * dwCoverage / 255);
     }
     lpPanel->iHeight = 64;
 }
@@ -329,7 +347,7 @@ VOID PaintHudPanel(
     CONST COLORREF colorText = RGB(235, 242, 249);
     CONST COLORREF colorMuted = RGB(139, 157, 177);
     CONST COLORREF colorAccent = RGB(93, 226, 210);
-    WCHAR szLine[192] = { 0 };
+    WCHAR wszLine[192] = { 0 };
     CONST HUD_BOARD *lpBoard = &lpState->aHistory[0];
 
     COLORREF colorGrade = lpOptions->aGrades[GetHudGrade(lpBoard, lpOptions)].color;
@@ -355,8 +373,8 @@ VOID PaintHudPanel(
         lpPanel->lpPixels[i] = 0x000D151F;
     }
     SetBkMode(lpPanel->hDc, TRANSPARENT);
-    swprintf_s(szLine, ARRAYSIZE(szLine), L"BOARD STATS                            %s", lpszStatus);
-    TextLine(lpPanel, lpPanel->hSmall, colorText, 14, 22, szLine);
+    swprintf_s(wszLine, ARRAYSIZE(wszLine), L"BOARD STATS                            %s", lpszStatus);
+    TextLine(lpPanel, lpPanel->hSmall, colorText, 14, 22, wszLine);
     if (!bBoard) {
         TextLine(lpPanel, lpPanel->hValue, colorMuted, iY, 38, L"Board a ramp to begin");
         iY += 44;
@@ -364,22 +382,22 @@ VOID PaintHudPanel(
         if (lpOptions->bChange) {
             TextLine(lpPanel, lpPanel->hSmall, colorMuted, iY, 20, L"3D SPEED CHANGE");
             iY += 20;
-            swprintf_s(szLine, ARRAYSIZE(szLine), L"%+.2f units/s", lpBoard->dDelta);
+            swprintf_s(wszLine, ARRAYSIZE(wszLine), L"%+.2f units/s", lpBoard->dDelta);
             TextLine(
                 lpPanel,
                 lpOptions->iCompact ? lpPanel->hValue : lpPanel->hBig,
                 lpOptions->bGradeColors ? colorGrade : (lpBoard->dDelta < 0 ? RGB(255, 189, 133) : colorAccent),
                 iY,
                 lpOptions->iCompact ? 32 : 60,
-                szLine
+                wszLine
             );
             iY += lpOptions->iCompact ? 36 : 64;
         }
 
         if (lpOptions->bRetention) {
             swprintf_s(
-                szLine,
-                ARRAYSIZE(szLine),
+                wszLine,
+                ARRAYSIZE(wszLine),
                 L"%.3f%%  %s",
                 lpOptions->bShowLoss ? 100.0 - lpBoard->dRetention : lpBoard->dRetention,
                 lpOptions->bShowLoss ? L"lost" : L"retained"
@@ -390,38 +408,38 @@ VOID PaintHudPanel(
                 lpOptions->bGradeColors ? colorGrade : colorAccent,
                 iY,
                 30,
-                szLine
+                wszLine
             );
             iY += 32;
         }
 
         if (lpOptions->bAngle) {
             swprintf_s(
-                szLine,
-                ARRAYSIZE(szLine),
+                wszLine,
+                ARRAYSIZE(wszLine),
                 L"%.3f\x00B0  approach / 90\x00B0 = grazing",
                 lpBoard->dAngle
             );
-            TextLine(lpPanel, lpPanel->hSmall, colorText, iY, 24, szLine);
+            TextLine(lpPanel, lpPanel->hSmall, colorText, iY, 24, wszLine);
             iY += 26;
         }
 
         if (lpOptions->bSpeeds) {
             swprintf_s(
-                szLine,
-                ARRAYSIZE(szLine),
+                wszLine,
+                ARRAYSIZE(wszLine),
                 L"#%llu   %.2f \x2192 %.2f units/s",
                 lpBoard->qwSequence,
                 lpBoard->dIncoming,
                 lpBoard->dOutgoing
             );
-            TextLine(lpPanel, lpPanel->hSmall, colorMuted, iY, 24, szLine);
+            TextLine(lpPanel, lpPanel->hSmall, colorMuted, iY, 24, wszLine);
             iY += 26;
         }
 
         if (lpOptions->bHorizontal) {
-            swprintf_s(szLine, ARRAYSIZE(szLine), L"Horizontal change: %+.2f units/s", lpBoard->dHorizontal);
-            TextLine(lpPanel, lpPanel->hSmall, colorText, iY, 24, szLine);
+            swprintf_s(wszLine, ARRAYSIZE(wszLine), L"Horizontal change: %+.2f units/s", lpBoard->dHorizontal);
+            TextLine(lpPanel, lpPanel->hSmall, colorText, iY, 24, wszLine);
             iY += 26;
         }
 
@@ -430,14 +448,14 @@ VOID PaintHudPanel(
             iY += 30;
             for (INT i = 1; i <= lpOptions->iHistory && (DWORD) i < lpState->dwHistoryCount; ++i) {
                 swprintf_s(
-                    szLine,
-                    ARRAYSIZE(szLine),
+                    wszLine,
+                    ARRAYSIZE(wszLine),
                     L"#%llu       %+.2f u/s       %.3f%%",
                     lpState->aHistory[i].qwSequence,
                     lpState->aHistory[i].dDelta,
                     lpState->aHistory[i].dRetention
                 );
-                TextLine(lpPanel, lpPanel->hSmall, colorText, iY, 22, szLine);
+                TextLine(lpPanel, lpPanel->hSmall, colorText, iY, 22, wszLine);
                 iY += 22;
             }
         }
@@ -488,4 +506,62 @@ VOID PlaceHudPanel(
     lpRect->top = max(0, min(iScreenHeight - iPanelHeight, iY));
     lpRect->right = lpRect->left + iPanelWidth;
     lpRect->bottom = lpRect->top + iPanelHeight;
+}
+
+VOID PaintYawPanel(
+    _Inout_ LPHUD_PANEL lpPanel,
+    _In_ CONST HUD_OPTIONS *lpOptions,
+    _In_ BOOL bAvailable,
+    _In_ FLOAT fValue
+) {
+    WCHAR szText[64] = { 0 };
+    HFONT hFont = CreateFontW(
+        -lpOptions->iYawFontSize,
+        0, 0, 0,
+        FW_NORMAL,
+        FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY,
+        DEFAULT_PITCH,
+        L"Segoe UI"
+    );
+    HGDIOBJ hOld = SelectObject(lpPanel->hDc, NULL != hFont ? hFont : lpPanel->hSmall);
+    RECT rect = { 0, 0, PANEL_WIDTH, lpOptions->iYawFontSize + 8 };
+
+    GdiFlush();
+    ZeroMemory(lpPanel->lpPixels, PANEL_WIDTH * PANEL_HEIGHT * sizeof(DWORD));
+    lpPanel->iHeight = rect.bottom;
+    if (bAvailable && isfinite(fValue)) {
+        swprintf_s(szText, ARRAYSIZE(szText), L"cl_yawspeed: %.2f", (DOUBLE) fValue);
+    } else {
+        wcscpy_s(szText, ARRAYSIZE(szText), L"cl_yawspeed: N/A");
+    }
+    SetBkMode(lpPanel->hDc, TRANSPARENT);
+    SetTextColor(lpPanel->hDc, RGB(255, 255, 255));
+    
+    DrawTextW(
+        lpPanel->hDc,
+        szText,
+        -1,
+        &rect,
+        DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | (lpOptions->bYawLeft ? DT_LEFT : DT_RIGHT)
+    );
+
+    SelectObject(lpPanel->hDc, hOld);
+    if (NULL != hFont) {
+        DeleteObject(hFont);
+    }
+
+    GdiFlush();
+    for (INT i = 0; i < PANEL_WIDTH * PANEL_HEIGHT; ++i) {
+        DWORD dwPixel = lpPanel->lpPixels[i];
+        DWORD dwCoverage = max(dwPixel & 255U, max((dwPixel >> 8) & 255U, (dwPixel >> 16) & 255U));
+
+        lpPanel->lpPixels[i] = (dwCoverage << 24) |
+            ((GetRValue(lpOptions->colorYaw) * dwCoverage / 255U) << 16) |
+            ((GetGValue(lpOptions->colorYaw) * dwCoverage / 255U) << 8) |
+            (GetBValue(lpOptions->colorYaw) * dwCoverage / 255U);
+    }
 }

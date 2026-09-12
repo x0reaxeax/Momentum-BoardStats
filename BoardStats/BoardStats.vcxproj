@@ -87,8 +87,10 @@
   <ItemGroup>
     <ClCompile Include="dllmain.c" />
     <ClCompile Include="Collector.c" />
+    <ClCompile Include="Paint.c" />
     <ClCompile Include="Lifecycle.c" />
     <ClCompile Include="Presentation.c" />
+    <ClCompile Include="YawSpeed.c" />
     <ClCompile Include="..\Common\Core.c" />
     <ClCompile Include="..\Common\Guard.c" />
   </ItemGroup>
@@ -105,6 +107,8 @@
   </Target>
   <ItemGroup>
     <ClInclude Include="HudTypes.h" />
+    <ClInclude Include="Paint.h" />
+    <ClInclude Include="YawSpeed.h" />
     <ClInclude Include="Components.h" />
     <ClInclude Include="Presentation.h" />
     <ClInclude Include="..\Common\Core.h" />
